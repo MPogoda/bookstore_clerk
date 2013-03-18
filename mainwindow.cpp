@@ -49,18 +49,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_filterButtons->addButton( ui->overstockedRadioButton, 1 );
     m_filterButtons->addButton( ui->customRadioButton, 2 );
 
-    /* coonect to database */
-    if (!connect_to_database())
-    {
-        QMessageBox::critical(this, tr("Database connection error"), tr("Cannot establish connection to database"));
-        throw std::logic_error("Cannot establish database connection");
-    }
-    prepare_queries();
+    /* setup connection to database */
+    setup_connection();
 
     connect(this, SIGNAL(connected()), this, SLOT(redrawView()));
     QTimer::singleShot(10, this, SLOT(processLogin()));
-
-    m_inputModel->setQuery(*m_simpleSearch);
 
     ui->tableView->setModel(m_inputModel);
     ui->tableView->setSelectionModel( m_inputSelectionModel );
@@ -86,26 +79,30 @@ MainWindow::~MainWindow()
     delete m_insertRequest;
 }
 
-bool MainWindow::connect_to_database()
+void MainWindow::setup_connection()
 {
-    DebugHelper DebugHelper( Q_FUNC_INFO);
+    DebugHelper debugHelper( Q_FUNC_INFO);
     QSettings settings( "settings.ini", QSettings::IniFormat );
 
     settings.beginGroup( "database" );
-
-    const QString DRIVER( settings.value( "driver",   "QOCI"      ).toString() );
-    const QString HOSTNM( settings.value( "hostname", "localhost" ).toString() );
-    const QString DBNAME( settings.value( "database", "bookstore" ).toString() );
-    const QString URNAME( settings.value( "user",     QString()   ).toString() );
-    const QString PSSWRD( settings.value( "password", QString()   ).toString() );
+    const QString dbDriver( settings.value( "driver",   "QOCI"      ).toString() );
+    const QString hostName( settings.value( "hostname", "localhost" ).toString() );
+    const QString dbName( settings.value( "database", "bookstore" ).toString() );
+    const QString userName( settings.value( "user",     QString()   ).toString() );
+    const QString password( settings.value( "password", QString()   ).toString() );
     settings.endGroup();
 
-    QSqlDatabase db = QSqlDatabase::addDatabase( DRIVER );
-    db.setHostName(     HOSTNM );
-    db.setDatabaseName( DBNAME );
-    db.setUserName(     URNAME );
-    db.setPassword(     PSSWRD );
-    return db.open();
+    qDebug() << "driver: " << dbDriver;
+    qDebug() << "hostname: " << hostName;
+    qDebug() << "database: " << dbName;
+    qDebug() << "username: " << userName;
+    qDebug() << "password: " << password;
+
+    QSqlDatabase db = QSqlDatabase::addDatabase( dbDriver );
+    db.setHostName(     hostName );
+    db.setDatabaseName( dbName );
+    db.setUserName(     userName );
+    db.setPassword(     password );
 }
 
 void MainWindow::prepare_queries()

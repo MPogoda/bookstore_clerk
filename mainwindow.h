@@ -36,7 +36,11 @@ private:
     QSqlQuery      *m_insertRequest;
     QButtonGroup   *m_filterButtons;
 
-    bool connect_to_database();
+    /**
+     * @brief Setup database connection: login, host, etc
+     */
+    void setup_connection();
+
     void prepare_queries();
     void disconnect_filters();
     void connect_filters();
