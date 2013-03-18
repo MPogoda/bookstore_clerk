@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>178</width>
-    <height>149</height>
+    <width>176</width>
+    <height>147</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -37,11 +37,14 @@
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
+     <property name="inputMask">
+      <string>000; </string>
+     </property>
      <property name="text">
       <string/>
      </property>
      <property name="maxLength">
-      <number>30</number>
+      <number>3</number>
      </property>
      <property name="placeholderText">
       <string>username</string>
