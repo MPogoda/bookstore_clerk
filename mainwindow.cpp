@@ -77,13 +77,20 @@ MainWindow::MainWindow(QWidget *parent)
     fillRequestAction->setShortcut( QKeySequence::MoveToStartOfLine);
     fillRequestAction->setToolTip( tr("Fill request for selected book") );
     ui->mainToolBar->addAction( fillRequestAction);
+    ui->menuAction->addAction( fillRequestAction );
+
+    QAction *addToBundleAction = new QAction( tr("Add to Bundle"), this );
+    addToBundleAction->setShortcut( QKeySequence::MoveToEndOfLine );
+    addToBundleAction->setToolTip( tr("Add selected book to bundle"));
+    ui->mainToolBar->addAction( addToBundleAction );
+    ui->menuAction->addAction( addToBundleAction );
 
     m_filterButtons->addButton( ui->trendingRadioButton, 0);
     m_filterButtons->addButton( ui->overstockedRadioButton, 1 );
     m_filterButtons->addButton( ui->customRadioButton, 2 );
 
     /* setup connection to database */
-    setup_connection();
+    setupConnection();
 
     connect(this, SIGNAL(connected()), this, SLOT(redrawView()));
     QTimer::singleShot(10, this, SLOT(processLogin()));
@@ -92,14 +99,20 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tableView->setSelectionModel( m_inputSelectionModel );
 
     connect( m_filterButtons, SIGNAL(buttonClicked(int)), this, SLOT(filterChanged(int)));
-    connect_filters();
+    connectFilters();
 
     connect( ui->filterButton, SIGNAL(clicked()), this, SLOT(redrawView()));
     connect( fillRequestAction, SIGNAL(triggered()), this, SLOT(fillRequest()));
 
-    connect( ui->actionDisconnect, SIGNAL(triggered()), this, SLOT(disconnect_clerk()) );
+    connect( ui->actionDisconnect, SIGNAL(triggered()), this, SLOT(disconnectClerk()) );
     connect( ui->actionReconnect, SIGNAL(triggered()), this, SLOT(processLogin()) );
-    connect( this, SIGNAL(connected()), this, SLOT(connect_clerk()) );
+    connect( this, SIGNAL(connected()), this, SLOT(connectClerk()) );
+
+    connect( ui->actionAbou, SIGNAL(triggered()), this, SLOT(showAbout()) );
+    connect( ui->actionAbout_Qt, SIGNAL(triggered()), this, SLOT(showAboutQt()) );
+
+    connect( m_inputSelectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
+             this, SLOT(selectionChanged(QModelIndex,QModelIndex)) );
 }
 
 MainWindow::~MainWindow()
@@ -108,7 +121,7 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::setup_connection() const
+void MainWindow::setupConnection() const
 {
     DebugHelper debugHelper( Q_FUNC_INFO);
     QSettings settings( "settings.ini", QSettings::IniFormat );
@@ -141,7 +154,7 @@ namespace
  * @param isbn ISBN number of book
  * @return true if exists
  */
-bool find_request_for_book(const QString& isbn )
+bool findRequestForBook(const QString& isbn )
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
     // assume db is opened
@@ -161,7 +174,7 @@ bool find_request_for_book(const QString& isbn )
  * @param title found book's title
  * @param quantity found book's quantity
  */
-void find_books_title_and_quantity( const QString& isbn, QString& title, uint& quantity)
+void findBooksTitleAndQuantity( const QString& isbn, QString& title, uint& quantity)
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
     QSqlQuery searchBook;
@@ -183,7 +196,7 @@ void find_books_title_and_quantity( const QString& isbn, QString& title, uint& q
  * @param isbn ISBN number of book
  * @return StringList of authors
  */
-const QStringList find_authors_for_book( const QString& isbn )
+const QStringList findAuthorsForBook( const QString& isbn )
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
     QSqlQuery searchAuthors;
@@ -213,7 +226,7 @@ const QStringList find_authors_for_book( const QString& isbn )
  * @param isbn ISBN number of book
  * @return number of succesful purchases for past week
  */
-uint find_sold_number( const QString& isbn)
+uint findSoldNumber( const QString& isbn)
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
     QSqlQuery searchSold;
@@ -242,7 +255,6 @@ uint find_sold_number( const QString& isbn)
 void MainWindow::fillRequest()
 {
     DebugHelper debugHelper( Q_FUNC_INFO);
-    DBOpener    dbopener( this );
 
     const int row = m_inputSelectionModel->currentIndex().row();
     if (-1 == row)
@@ -254,8 +266,10 @@ void MainWindow::fillRequest()
     const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
     qDebug() << "ISBN: " << isbn;
 
+    DBOpener    dbopener( this );
+
     //check if there already request for that ISBN
-    if ( find_request_for_book( isbn ) )
+    if ( findRequestForBook( isbn ) )
     {
         qDebug() << "Found request :<";
         QMessageBox::information( this, tr("Cannot add request"), tr("Request already exists! Contact administrator"));
@@ -264,11 +278,11 @@ void MainWindow::fillRequest()
 
     QString title;
     uint quantity;
-    find_books_title_and_quantity( isbn, title, quantity);
+    findBooksTitleAndQuantity( isbn, title, quantity);
 
-    const QStringList authors = find_authors_for_book( isbn );
+    const QStringList authors = findAuthorsForBook( isbn );
 
-    const uint sold = find_sold_number( isbn );
+    const uint sold = findSoldNumber( isbn );
 
     m_fillRequest->prepareForm( isbn, title, authors.join(", "), quantity, sold);
     if (QDialog::Accepted != m_fillRequest->exec())
@@ -296,26 +310,31 @@ void MainWindow::fillRequest()
                 QSqlDatabase::database().commit();
 }
 
-void MainWindow::disconnect_clerk()
+void MainWindow::disconnectClerk()
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
 
     m_inputModel->clear();
-    ui->tabWidget->setEnabled( false );
-    ui->mainToolBar->setEnabled( false );
+//    ui->tabWidget->setEnabled( false );
+    ui->tabWidget->hide();
+    ui->mainToolBar->hide();
+//    ui->mainToolBar->setEnabled( false );
     ui->filterGroupBox->hide();
-    ui->filterToggleButton->setEnabled( false );
+    ui->currentBookBox->hide();
+//    ui->filterToggleButton->setEnabled( false );
+    ui->filterToggleButton->hide();
     ui->boughtLessThanBox->setChecked( false );
     ui->boughtMoreThanBox->setChecked( false );
     ui->boughtLessThanBox->setChecked( false );
     ui->boughtMoreThanBox->setChecked( false );
 
-    ui->actionDisconnect->setEnabled( false );
+//    ui->actionDisconnect->setEnabled( false );
+    ui->actionDisconnect->setVisible( false );
 
     m_clerkID = 0;
 }
 
-void MainWindow::connect_clerk()
+void MainWindow::connectClerk()
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
 
@@ -325,18 +344,150 @@ void MainWindow::connect_clerk()
         return;
     }
 
-    ui->tabWidget->setEnabled( true );
-    ui->mainToolBar->setEnabled( true );
-    ui->filterToggleButton->setEnabled( true );
+//    ui->tabWidget->setEnabled( true );
+//    ui->mainToolBar->setEnabled( true );
+//    ui->filterToggleButton->setEnabled( true );
+    ui->tabWidget->show();
+    ui->mainToolBar->show();
+    ui->filterToggleButton->show();
 
-    ui->actionDisconnect->setEnabled( true );
+    ui->actionDisconnect->setVisible( true );
+}
+
+void MainWindow::showAbout()
+{
+    QMessageBox about;
+    about.setWindowTitle(tr( "Help / About" ));
+    about.setTextFormat(Qt::RichText);
+    about.setText( tr("<h4>Application for bookstore clerk</h4>"
+                      "<p>It was developed with sole purpose of completion DB&IS course</p>"
+                      "<p>You can use it to find out popular books and request more of them "
+                      "or to find out less popular books and group them into bundles "
+                      "so people will buy them quickly.</p>"
+                      "<p>Author: <a href='http://about.me/michael.pogoda'>Michael Pogoda</a></p>"
+                      "<p>Visit <a href='http://github.com/MPogoda/bookstore_clerk'>github</a> for more info</p><br/>"
+                      "The program is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE "
+                      "WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE."));
+    about.exec();
+}
+
+void MainWindow::showAboutQt()
+{
+    QMessageBox::aboutQt( this, tr("Bookstore Clerk") );
+}
+
+namespace
+{
+
+void findBookInfo( const QString& isbn, QString& title, uint& quantity, float& price, uint& year, QString& publisherName)
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+    QSqlQuery searchBook;
+    searchBook.setForwardOnly( true );
+    qDebug() << "Prepare: " <<
+                searchBook.prepare( "select title, price, quantity, year, publisher.name "
+                                    "from book join publisher on publisher.publisher_id = book.publisher_id "
+                                    "where isbn = :isbn" );
+
+    searchBook.bindValue( ":isbn", isbn );
+
+    qDebug() << "Exec: " << searchBook.exec() << searchBook.first();
+
+    title = searchBook.value( 0 ).toString();
+    price = searchBook.value( 1 ).toFloat();
+    quantity = searchBook.value( 2 ).toUInt();
+    year = searchBook.value( 3 ).toUInt();
+    publisherName = searchBook.value( 4 ).toString();
+    qDebug() << "Title: " << title << "Quantity: " << quantity
+             << "Price: " << price << "Year: " << year
+             << "Publisher Name: " << publisherName;
+}
+}
+
+void MainWindow::addToBundle()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    const int row = m_inputSelectionModel->currentIndex().row();
+    if (-1 == row)
+    {
+        qDebug() << "No row is selected";
+        return;
+    }
+
+    const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
+    qDebug() << "ISBN: " << isbn;
+
+    if (m_bundledISBNs.contains( isbn ))
+    {
+        qDebug() << "Already in Bundle";
+        QMessageBox::information( this, tr("Cannot add book to Bundle")
+                                  , tr("That book is already in bundle under construction."));
+        return;
+    }
+
+    DBOpener    dbopener( this );
+
+    QString title;
+    uint quantity;
+    float price;
+    uint year;
+    QString publisherName;
+
+    findBookInfo( isbn, title, quantity, price, year, publisherName );
+}
+
+void MainWindow::selectionChanged(const QModelIndex &current, const QModelIndex &previous)
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    if (current.row() == previous.row())
+    {
+        qDebug() << "Row has not changed";
+        return;
+    }
+
+    if (-1 == current.row())
+    {
+        ui->currentBookBox->hide();
+        return;
+    }
+
+    if (-1 == previous.row())
+    {
+        ui->currentBookBox->show();
+    }
+
+    const QString isbn = m_inputModel->record( current.row() ).value( "isbn" ).toString();
+    qDebug() << "Selected ISBN: " << isbn;
+
+    DBOpener dBOpener( this );
+
+    QString title;
+    uint quantity;
+    float price;
+    uint year;
+    QString publisherName;
+    findBookInfo( isbn, title, quantity, price, year, publisherName);
+
+    const uint sold = findSoldNumber( isbn );
+    const QStringList authors = findAuthorsForBook( isbn );
+
+    ui->isbnLabel->setText( isbn );
+    ui->titleLabel->setText( title );
+    ui->quantityLabel->setText( QString::number( quantity ));
+    ui->priceLabel->setText( QString::number( price, 'g', 2));
+    ui->yearLabel->setText( QString::number( year ));
+    ui->publisherLabel->setText( publisherName );
+    ui->soldLabel->setText( QString::number( sold ) );
+    ui->authorsLabel->setText( authors.join( ", " ) );
 }
 
 void MainWindow::processLogin()
 {
     DebugHelper debugHelper( Q_FUNC_INFO);
 
-    disconnect_clerk();
+    disconnectClerk();
 
     m_login->clear();
     if (QDialog::Accepted == m_login->exec())
@@ -385,21 +536,19 @@ void MainWindow::redrawView()
 
     QSqlQuery simpleSearch;
     qDebug() << "Prepare: " <<
-                simpleSearch.prepare("select   book.isbn as ISBN, count(*) as Sold, max(quantity) as Quantity "
-                                     "from     history_of_purchasing join book on book.isbn = history_of_purchasing.isbn "
-                                     "where    (purchasing_date >= :fromDate and purchasing_date <= :toDate) "
-                                     "     and (quantity >= :fromStock and quantity <= :toStock) "
-                                     "group by book.isbn "
-                                     "having   count(*) >= :fromBought and count(*) <= :toBought"
-                                     );
+                simpleSearch.prepare( "SELECT book.isbn AS isbn, count(*) AS sold, quantity "
+                                      "FROM book LEFT JOIN history_of_purchasing ON history_of_purchasing.isbn = book.isbn "
+                                      "WHERE (quantity BETWEEN :fromStock AND :toStock) "
+                                      " AND (purchasing_date ISNULL OR purchasing_date >= :fromDate) "
+                                      "GROUP BY book.isbn "
+                                      "HAVING count(*) BETWEEN :fromBought AND :toBought");
     // TODO: bind past week date
     simpleSearch.bindValue(":fromDate", "0001-01-01");
-    simpleSearch.bindValue(":toDate", "3000-12-12");
 
     simpleSearch.bindValue(":fromBought",
                            ui->boughtMoreThanBox->isChecked() ?
                                ui->boughtMoreThenSpin->value()
-                             : 0
+                             : -1
                                );
     simpleSearch.bindValue(":toBought",
                            ui->boughtLessThanBox->isChecked() ?
@@ -424,7 +573,7 @@ void MainWindow::redrawView()
     m_inputModel->setQuery(simpleSearch);
 }
 
-void MainWindow::connect_filters() const
+void MainWindow::connectFilters() const
 {
     connect(ui->boughtLessThenSpin, SIGNAL(valueChanged(int)), this, SLOT(boughtLessTrigger(int)));
     connect(ui->boughtMoreThenSpin, SIGNAL(valueChanged(int)), this, SLOT(boughtMoreTrigger(int)));
@@ -437,7 +586,7 @@ void MainWindow::connect_filters() const
     connect( ui->instockMoreThanBox, SIGNAL(clicked(bool)), this, SLOT(instockMoreBoxTrigger(bool)));
 }
 
-void MainWindow::disconnect_filters() const
+void MainWindow::disconnectFilters() const
 {
     disconnect( ui->boughtLessThenSpin, SIGNAL(valueChanged(int)),this, SLOT(boughtLessTrigger(int)) );
     disconnect( ui->boughtMoreThenSpin, SIGNAL(valueChanged(int)),this, SLOT(boughtMoreTrigger(int)) );
@@ -507,7 +656,7 @@ void MainWindow::instockMoreTrigger(const int val)
 void MainWindow::filterChanged(const int buttonId)
 {
     if (2 != buttonId)
-        disconnect_filters();
+        disconnectFilters();
 
     switch (buttonId)
     {
@@ -533,9 +682,8 @@ void MainWindow::filterChanged(const int buttonId)
     }
 
     if (2 != buttonId)
-        connect_filters();
+        connectFilters();
 }
-
 
 void MainWindow::instockLessTrigger(const int val)
 {

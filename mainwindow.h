@@ -11,6 +11,8 @@ class FillRequestDialog;
 class QSqlQueryModel;
 class QButtonGroup;
 class QItemSelectionModel;
+class QStringList;
+class QModelIndex;
 
 class MainWindow : public QMainWindow
 {
@@ -46,20 +48,44 @@ private:
      * @brief m_filterButtons group of radio buttons for filters
      */
     QButtonGroup *m_filterButtons;
+    /**
+     * @brief m_bundledBooks Information about books that are currently in bundle under construction (modification)
+     */
+    QStringList m_bundledBooks;
+    /**
+     * @brief m_bundledISBNs ISBN numbers of books that are currently in bundle under construction (modification)
+     */
+    QStringList m_bundledISBNs;
+    /**
+     * @brief m_bundledDiscounts discounts for books that are currently in bundle under construction (modification)
+     */
+    QList< qreal > m_bundledDiscounts;
+    /**
+     * @brief m_bundleName Name of bundle under construction
+     */
+    QString m_bundleName;
+    /**
+     * @brief m_bunleComment Comment of bundle under construction
+     */
+    QString m_bunleComment;
+    /**
+     * @brief m_isBundleUnderConstruction is there any bundle under construction right now
+     */
+    bool m_isBundleUnderConstruction;
 
     /**
      * @brief Setup database connection: login, host, etc
      */
-    void setup_connection() const;
+    void setupConnection() const;
 
     /**
-     * @brief disconnect_filters disconnects all signals from filter controls
+     * @brief disconnects all signals from filter controls
      */
-    void disconnect_filters() const;
+    void disconnectFilters() const;
     /**
-     * @brief connect_filters connects all signals back to filter controls
+     * @brief connects all signals back to filter controls
      */
-    void connect_filters() const;
+    void connectFilters() const;
 private slots:
     /**
      * @brief processLogin (re)login into system
@@ -97,12 +123,29 @@ private slots:
     /**
      * @brief disconnect_clerk Disconnect current clerk (clear all tables, etc, etc)
      */
-    void disconnect_clerk();
+    void disconnectClerk();
 
     /**
      * @brief connect_clerk enables all widgets after succesful login of clerk
      */
-    void connect_clerk();
+    void connectClerk();
+
+    /**
+     * @brief show_about Shows simple about messageBox
+     */
+    void showAbout();
+
+    /**
+     * @brief show_about_qt Show simple aboutqt messageBox
+     */
+    void showAboutQt();
+
+    /**
+     * @brief add_to_bundle add selected to bundle that is currently under construction (modification)
+     */
+    void addToBundle();
+
+    void selectionChanged( const QModelIndex& current, const QModelIndex& previous );
 signals:
     void connected();
 };
