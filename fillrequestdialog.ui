@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>403</width>
-    <height>368</height>
+    <width>401</width>
+    <height>333</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -236,7 +236,7 @@
            </font>
           </property>
           <property name="text">
-           <string>&amp;Quantity:</string>
+           <string>Quantity:</string>
           </property>
          </widget>
         </item>
@@ -251,13 +251,6 @@
          </widget>
         </item>
        </layout>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="commentEdit">
-        <property name="placeholderText">
-         <string>Additional comment about that request</string>
-        </property>
-       </widget>
       </item>
      </layout>
     </widget>

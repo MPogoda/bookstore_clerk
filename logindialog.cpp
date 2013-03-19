@@ -2,9 +2,9 @@
 #include "ui_logindialog.h"
 #include <QCryptographicHash>
 
-LoginDialog::LoginDialog(QWidget *parent) :
-    QDialog(parent),
-    ui(new Ui::LoginDialog)
+LoginDialog::LoginDialog(QWidget *parent)
+  : QDialog(parent)
+  , ui(new Ui::LoginDialog)
 {
     ui->setupUi(this);
     connect(ui->buttonBox, SIGNAL(accepted()), this, SLOT(store_credentials()));
@@ -19,6 +19,7 @@ void LoginDialog::clear()
 {
     ui->passwordEdit->clear();
     ui->userEdit->clear();
+    ui->userEdit->setFocus();
     m_passwordHash.clear();
     m_userName.clear();
 }
