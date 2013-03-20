@@ -166,7 +166,14 @@ private slots:
      */
     void addToBundle();
 
-    void selectionChanged( const QModelIndex& current, const QModelIndex& previous );
+    /**
+     * @brief selectionChanged is executed every time selection changed in input view
+     * @param current current index in input view
+     * @param previous previous index in input view
+     */
+    void inputViewSelectionChanged( const QModelIndex& current, const QModelIndex& previous );
+
+    void currentTabChanged( const int index);
 signals:
     void connected();
 };

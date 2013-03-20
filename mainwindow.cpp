@@ -107,7 +107,9 @@ MainWindow::MainWindow(QWidget * const parent)
     connect( ui->actionAbout_Qt, SIGNAL(triggered()), this, SLOT(showAboutQt()) );
 
     connect( m_inputSelectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-             this, SLOT(selectionChanged(QModelIndex,QModelIndex)) );
+             this, SLOT(inputViewSelectionChanged(QModelIndex,QModelIndex)) );
+
+    connect( ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(currentTabChanged(int)) );
 }
 
 namespace
@@ -124,6 +126,37 @@ void setShortcut( QAction *const action, const QKeySequence& sequence, const QKe
     else
         action->setShortcut( sequence );
 }
+}
+
+void MainWindow::currentTabChanged(const int index)
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+    ui->currentBookBox->hide();
+
+    switch (index)
+    {
+    case 0:
+        // do stuff for input pane
+        ui->discountBox->hide();
+        qDebug() << m_inputSelectionModel->currentIndex().row();
+        inputViewSelectionChanged( m_inputSelectionModel->currentIndex(), m_inputModel->index( -1, -1 ));
+        break;
+    case 1:
+        if (!m_isBundleUnderConstruction)
+        {
+            ui->tabBundleMod->setEnabled( false );
+            // do stuff (ask about new bundle? )
+        }
+        ui->discountBox->show();
+        // do stuff for bundle modification pane
+        break;
+    case 2:
+        // do stuff for bundle selection pane
+        break;
+    default:
+        throw std::logic_error( "There shouldn't be that tab!");
+    }
+
 }
 
 void MainWindow::configureActions()
@@ -475,7 +508,7 @@ void MainWindow::addToBundle()
     findBookInfo( isbn, title, quantity, price, year, publisherName );
 }
 
-void MainWindow::selectionChanged(const QModelIndex &current, const QModelIndex &previous)
+void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
 
