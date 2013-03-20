@@ -58,10 +58,13 @@ struct DBOpener
 };
 }
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(QWidget * const parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , m_clerkID( 0 )
+    , m_fillRequestAction( new QAction( tr("Add Request"), this) )
+    , m_modifyRequestAction( new QAction( tr("Modify Request"), this) )
+    , m_addToBundleAction( new QAction( tr("Add to Bundle"), this ) )
     , m_login(new LoginDialog(this))
     , m_fillRequest( new FillRequestDialog( this ))
     , m_inputModel( new QSqlQueryModel( this ) )
@@ -72,18 +75,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->setupUi(this);
     ui->filterGroupBox->hide();
+    ui->discountBox->hide();
 
-    QAction *fillRequestAction = new QAction( tr("Request"), this);
-    fillRequestAction->setShortcut( QKeySequence::MoveToStartOfLine);
-    fillRequestAction->setToolTip( tr("Fill request for selected book") );
-    ui->mainToolBar->addAction( fillRequestAction);
-    ui->menuAction->addAction( fillRequestAction );
+    configureActions();
 
-    QAction *addToBundleAction = new QAction( tr("Add to Bundle"), this );
-    addToBundleAction->setShortcut( QKeySequence::MoveToEndOfLine );
-    addToBundleAction->setToolTip( tr("Add selected book to bundle"));
-    ui->mainToolBar->addAction( addToBundleAction );
-    ui->menuAction->addAction( addToBundleAction );
 
     m_filterButtons->addButton( ui->trendingRadioButton, 0);
     m_filterButtons->addButton( ui->overstockedRadioButton, 1 );
@@ -102,7 +97,7 @@ MainWindow::MainWindow(QWidget *parent)
     connectFilters();
 
     connect( ui->filterButton, SIGNAL(clicked()), this, SLOT(redrawView()));
-    connect( fillRequestAction, SIGNAL(triggered()), this, SLOT(fillRequest()));
+    connect( m_fillRequestAction, SIGNAL(triggered()), this, SLOT(fillRequest()));
 
     connect( ui->actionDisconnect, SIGNAL(triggered()), this, SLOT(disconnectClerk()) );
     connect( ui->actionReconnect, SIGNAL(triggered()), this, SLOT(processLogin()) );
@@ -113,6 +108,51 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect( m_inputSelectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
              this, SLOT(selectionChanged(QModelIndex,QModelIndex)) );
+}
+
+namespace
+{
+void setShortcut( QAction *const action, const QKeySequence& sequence, const QKeySequence fallback = QKeySequence::UnknownKey)
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    if (sequence.isEmpty())
+    {
+        qDebug() << "Given sequence is empty. Using fallback";
+        action->setShortcut( fallback );
+    }
+    else
+        action->setShortcut( sequence );
+}
+}
+
+void MainWindow::configureActions()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    setShortcut( ui->actionQuit, QKeySequence::Quit, tr("Ctrl+Q") );
+    setShortcut( ui->actionDisconnect, QKeySequence::Close, tr("Ctrl+W") );
+    setShortcut( ui->actionReconnect, QKeySequence::New, tr("Ctrl+N") );
+    setShortcut( ui->actionAbou, QKeySequence::HelpContents, tr("F1"));
+    setShortcut( ui->actionAbout_Qt, QKeySequence::WhatsThis, tr("Shift+F1"));
+    setShortcut( m_fillRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
+    setShortcut( m_modifyRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
+    setShortcut( m_addToBundleAction, QKeySequence::Italic, tr("Ctrl+I"));
+
+    m_fillRequestAction->setToolTip( tr("Fill request for selected book") );
+    ui->mainToolBar->addAction( m_fillRequestAction);
+    ui->menuAction->addAction( m_fillRequestAction );
+    m_fillRequestAction->setVisible( false );
+
+    m_modifyRequestAction->setToolTip( tr("Modify your previous request" ));
+    ui->mainToolBar->addAction( m_modifyRequestAction );
+    ui->menuAction->addAction( m_modifyRequestAction );
+    m_modifyRequestAction->setVisible( false );
+
+    m_addToBundleAction->setToolTip( tr("Add selected book to bundle"));
+    ui->mainToolBar->addAction( m_addToBundleAction );
+    ui->menuAction->addAction( m_addToBundleAction );
+    m_addToBundleAction->setVisible( false );
 }
 
 MainWindow::~MainWindow()
@@ -150,48 +190,6 @@ void MainWindow::setupConnection() const
 namespace
 {
 /**
- * @brief find_request_for_book checks whether there is request for that book already
- * @param isbn ISBN number of book
- * @return true if exists
- */
-bool findRequestForBook(const QString& isbn )
-{
-    DebugHelper debugHelper( Q_FUNC_INFO );
-    // assume db is opened
-    QSqlQuery searchRequest;
-    searchRequest.setForwardOnly( true );
-    qDebug() << "Prepare: " <<
-                searchRequest.prepare( "select count(*) from request where isbn = :isbn" );
-    searchRequest.bindValue( ":isbn", isbn );
-    qDebug() << "Exec: " << searchRequest.exec() << searchRequest.first();
-
-    return (0 != searchRequest.value( 0 ).toUInt());
-}
-
-/**
- * @brief find_books_title_and_quantity finds book's title and available quantity
- * @param isbn  ISBN number of book
- * @param title found book's title
- * @param quantity found book's quantity
- */
-void findBooksTitleAndQuantity( const QString& isbn, QString& title, uint& quantity)
-{
-    DebugHelper debugHelper( Q_FUNC_INFO );
-    QSqlQuery searchBook;
-    searchBook.setForwardOnly( true );
-    qDebug() << "Prepare: " <<
-                searchBook.prepare( "select title, quantity from book where isbn = :isbn" );
-
-    searchBook.bindValue( ":isbn", isbn );
-
-    qDebug() << "Exec: " << searchBook.exec() << searchBook.first();
-
-    title = searchBook.value( 0 ).toString();
-    quantity = searchBook.value( 1 ).toUInt();
-    qDebug() << "Title: " << title << "; Quantity: " << quantity;
-}
-
-/**
  * @brief find_authors_for_book get all authors that have written book
  * @param isbn ISBN number of book
  * @return StringList of authors
@@ -202,12 +200,12 @@ const QStringList findAuthorsForBook( const QString& isbn )
     QSqlQuery searchAuthors;
     searchAuthors.setForwardOnly( true );
     qDebug() << "Prepare: " <<
-        searchAuthors.prepare( "select name "
-                               "from book join book_s_author "
-                                         "on book_s_author.isbn = book.isbn "
-                                         "join author "
-                                         "on author.author_id = book_s_author.author_id "
-                               "where book_s_author.isbn = :isbn ");
+        searchAuthors.prepare( "SELECT name "
+                               "FROM book JOIN book_s_author "
+                                         "ON book_s_author.isbn = book.isbn "
+                                         "JOIN author "
+                                         "ON author.author_id = book_s_author.author_id "
+                               "WHERE book_s_author.isbn = :isbn ");
 
     searchAuthors.bindValue( ":isbn", isbn );
     qDebug() << "Exec: " << searchAuthors.exec();
@@ -220,36 +218,62 @@ const QStringList findAuthorsForBook( const QString& isbn )
 
     return authors;
 }
-
-/**
- * @brief find_sold_number finds how many books with that ISBN have been sold past week (TODO)
- * @param isbn ISBN number of book
- * @return number of succesful purchases for past week
- */
-uint findSoldNumber( const QString& isbn)
-{
-    DebugHelper debugHelper( Q_FUNC_INFO );
-    QSqlQuery searchSold;
-    searchSold.setForwardOnly( true );
-    qDebug() << "Prepare: " <<
-                searchSold.prepare( "select count(*) as sold "
-                                    "from history_of_purchasing join book "
-                                    "on book.isbn = history_of_purchasing.isbn "
-                                    "where purchasing_date > :fromDate "
-                                    "and book.isbn = :isbn "
-                                    "group by book.isbn " );
-
-    // TODO: bind week before current
-    searchSold.bindValue( ":fromDate", "0001-01-01" );
-    searchSold.bindValue( ":isbn", isbn );
-
-    qDebug() << "Exec: " << searchSold.exec() << searchSold.first();
-
-    const uint sold = searchSold.value( 0 ).toUInt();
-    qDebug() << "Sold: " << sold;
-
-    return sold;
 }
+
+void MainWindow::modifyRequest()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO);
+
+    const int row = m_inputSelectionModel->currentIndex().row();
+    if (-1 == row)
+    {
+        qDebug() << "No row is selected";
+        return;
+    }
+
+    m_fillRequest->prepareForm( ui->requestedLabel->text().toUInt() );
+
+    if (QDialog::Accepted != m_fillRequest->exec())
+    {
+        qDebug() << "Request has been cancelled!";
+        return;
+    }
+
+    const uint request = m_fillRequest->quantity();
+
+    if (request == ui->requestedLabel->text().toUInt())
+    {
+        qDebug() << "Request has not been changed";
+        return;
+    }
+
+    const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
+    qDebug() << "ISBN: " << isbn;
+
+    DBOpener    dbopener( this );
+
+    QSqlQuery insertRequest;
+    qDebug() << "Prepare: " <<
+                insertRequest.prepare( "INSERT INTO request( isbn, quantity, clerk_id ) VALUES "
+                                       "( :isbn, :quantity, :clerkID )");
+
+    insertRequest.bindValue( ":isbn", isbn );
+    insertRequest.bindValue( ":quantity", request );
+    insertRequest.bindValue( ":clerkID", m_clerkID );
+
+    qDebug() << "Transaction: " <<
+                QSqlDatabase::database().transaction();
+    qDebug() << "Exec: " <<
+                insertRequest.exec();
+    const bool commit = QSqlDatabase::database().commit();
+    qDebug() << "Commit: " << commit;
+
+    if (commit)
+    {
+        ui->requestedLabel->setText( QString::number( request ));
+        m_modifyRequestAction->setVisible( true );
+        m_fillRequestAction->setVisible( false );
+    }
 }
 
 void MainWindow::fillRequest()
@@ -263,28 +287,8 @@ void MainWindow::fillRequest()
         return;
     }
 
-    const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
-    qDebug() << "ISBN: " << isbn;
+    m_fillRequest->prepareForm( 1 );
 
-    DBOpener    dbopener( this );
-
-    //check if there already request for that ISBN
-    if ( findRequestForBook( isbn ) )
-    {
-        qDebug() << "Found request :<";
-        QMessageBox::information( this, tr("Cannot add request"), tr("Request already exists! Contact administrator"));
-        return;
-    }
-
-    QString title;
-    uint quantity;
-    findBooksTitleAndQuantity( isbn, title, quantity);
-
-    const QStringList authors = findAuthorsForBook( isbn );
-
-    const uint sold = findSoldNumber( isbn );
-
-    m_fillRequest->prepareForm( isbn, title, authors.join(", "), quantity, sold);
     if (QDialog::Accepted != m_fillRequest->exec())
     {
         qDebug() << "Request has been cancelled!";
@@ -293,9 +297,14 @@ void MainWindow::fillRequest()
 
     const uint request = m_fillRequest->quantity();
 
+    const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
+    qDebug() << "ISBN: " << isbn;
+
+    DBOpener    dbopener( this );
+
     QSqlQuery insertRequest;
     qDebug() << "Prepare: " <<
-                insertRequest.prepare( "insert into request( isbn, quantity, clerk_id ) values "
+                insertRequest.prepare( "INSERT INTO request( isbn, quantity, clerk_id ) VALUES "
                                        "( :isbn, :quantity, :clerkID )");
 
     insertRequest.bindValue( ":isbn", isbn );
@@ -306,8 +315,15 @@ void MainWindow::fillRequest()
                 QSqlDatabase::database().transaction();
     qDebug() << "Exec: " <<
                 insertRequest.exec();
-    qDebug() << "Commit: " <<
-                QSqlDatabase::database().commit();
+    const bool commit = QSqlDatabase::database().commit();
+    qDebug() << "Commit: " << commit;
+
+    if (commit)
+    {
+        ui->requestedLabel->setText( QString::number( request ));
+        m_modifyRequestAction->setVisible( true );
+        m_fillRequestAction->setVisible( false );
+    }
 }
 
 void MainWindow::disconnectClerk()
@@ -344,9 +360,6 @@ void MainWindow::connectClerk()
         return;
     }
 
-//    ui->tabWidget->setEnabled( true );
-//    ui->mainToolBar->setEnabled( true );
-//    ui->filterToggleButton->setEnabled( true );
     ui->tabWidget->show();
     ui->mainToolBar->show();
     ui->filterToggleButton->show();
@@ -378,16 +391,15 @@ void MainWindow::showAboutQt()
 
 namespace
 {
-
 void findBookInfo( const QString& isbn, QString& title, uint& quantity, float& price, uint& year, QString& publisherName)
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
     QSqlQuery searchBook;
     searchBook.setForwardOnly( true );
     qDebug() << "Prepare: " <<
-                searchBook.prepare( "select title, price, quantity, year, publisher.name "
-                                    "from book join publisher on publisher.publisher_id = book.publisher_id "
-                                    "where isbn = :isbn" );
+                searchBook.prepare( "SELECT title, price, quantity, year, publisher.name "
+                                    "FROM book JOIN publisher ON publisher.publisher_id = book.publisher_id "
+                                    "WHERE isbn = :isbn" );
 
     searchBook.bindValue( ":isbn", isbn );
 
@@ -401,6 +413,32 @@ void findBookInfo( const QString& isbn, QString& title, uint& quantity, float& p
     qDebug() << "Title: " << title << "Quantity: " << quantity
              << "Price: " << price << "Year: " << year
              << "Publisher Name: " << publisherName;
+}
+
+uint findRequestedAmmount( const QString& isbn, uint& clerkID )
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+    QSqlQuery findRequest;
+    findRequest.setForwardOnly( true );
+
+    qDebug() << "Prepare: " <<
+                findRequest.prepare( "SELECT quantity, clerk_id FROM request WHERE isbn = :isbn" );
+
+    findRequest.bindValue( ":isbn", isbn );
+    qDebug() << "Exec: " << findRequest.exec();
+
+    if (0 == findRequest.size())
+    {
+        clerkID = 0;
+        return 0;
+    }
+
+    qDebug() << "Selecting first record: " << findRequest.first();
+    clerkID = findRequest.value( 1 ).toUInt();
+    const uint requested = findRequest.value( 0 ).toUInt();
+
+    qDebug() << "ClerkID: " << clerkID << "Requested: " << requested;
+    return requested;
 }
 }
 
@@ -470,7 +508,7 @@ void MainWindow::selectionChanged(const QModelIndex &current, const QModelIndex 
     QString publisherName;
     findBookInfo( isbn, title, quantity, price, year, publisherName);
 
-    const uint sold = findSoldNumber( isbn );
+    const uint sold = m_inputModel->record( current.row() ).value( "sold" ).toUInt();
     const QStringList authors = findAuthorsForBook( isbn );
 
     ui->isbnLabel->setText( isbn );
@@ -481,6 +519,34 @@ void MainWindow::selectionChanged(const QModelIndex &current, const QModelIndex 
     ui->publisherLabel->setText( publisherName );
     ui->soldLabel->setText( QString::number( sold ) );
     ui->authorsLabel->setText( authors.join( ", " ) );
+
+    uint clerkID;
+    const uint requestedAmmount = findRequestedAmmount( isbn, clerkID);
+    if (0 == requestedAmmount) // No request found
+    {
+        ui->requestedLabel->setText( tr("None"));
+        m_fillRequestAction->setVisible( true );
+        m_modifyRequestAction->setVisible( false );
+
+    }
+    else
+    {
+        ui->requestedLabel->setText( QString::number( requestedAmmount ));
+        m_fillRequestAction->setVisible( false );
+        // Enable modifying of request if this clerk has filled it previously
+        m_modifyRequestAction->setVisible( clerkID == m_clerkID );
+    }
+
+    if (!m_isBundleUnderConstruction)
+        return;
+
+    if (m_bundledISBNs.contains(isbn))
+    {
+        // TODO: add delete book from bundle???
+        return;
+    }
+
+    m_addToBundleAction->setVisible( true );
 }
 
 void MainWindow::processLogin()
@@ -500,10 +566,10 @@ void MainWindow::processLogin()
         QSqlQuery searchPasswordHash;
         searchPasswordHash.setForwardOnly( true );
         qDebug() << "Prepare: " <<
-                    searchPasswordHash.prepare( "select count(*) "
-                                                "from clerk "
-                                                "where clerk_id = :clerkID "
-                                                "and password_hash = :passwordHash ");
+                    searchPasswordHash.prepare( "SELECT COUNT(*) "
+                                                "FROM clerk "
+                                                "WHERE clerk_id = :clerkID "
+                                                "AND password_hash = :passwordHash ");
         searchPasswordHash.bindValue( ":clerkID", m_login->userName() );
         searchPasswordHash.bindValue( ":passwordHash", m_login->passwordHash() );
 
@@ -536,15 +602,13 @@ void MainWindow::redrawView()
 
     QSqlQuery simpleSearch;
     qDebug() << "Prepare: " <<
-                simpleSearch.prepare( "SELECT book.isbn AS isbn, count(*) AS sold, quantity "
-                                      "FROM book LEFT JOIN history_of_purchasing ON history_of_purchasing.isbn = book.isbn "
+                simpleSearch.prepare( "SELECT b.isbn AS isbn, COUNT(purchasing_date) AS sold, quantity "
+                                      "FROM book b LEFT JOIN history_of_purchasing h ON h.isbn = b.isbn "
                                       "WHERE (quantity BETWEEN :fromStock AND :toStock) "
-                                      " AND (purchasing_date ISNULL OR purchasing_date >= :fromDate) "
-                                      "GROUP BY book.isbn "
+                                      // TODO: uncomment on ORCL
+                                    //  " AND (purchasing_date ISNULL OR purchasing_date >= trunc(sysdate - 7)) "
+                                      "GROUP BY b.isbn "
                                       "HAVING count(*) BETWEEN :fromBought AND :toBought");
-    // TODO: bind past week date
-    simpleSearch.bindValue(":fromDate", "0001-01-01");
-
     simpleSearch.bindValue(":fromBought",
                            ui->boughtMoreThanBox->isChecked() ?
                                ui->boughtMoreThenSpin->value()

@@ -11,24 +11,15 @@ class FillRequestDialog : public QDialog
     Q_OBJECT
     
 public:
-    explicit FillRequestDialog(QWidget *parent = 0);
+    explicit FillRequestDialog(QWidget * const parent = NULL);
     ~FillRequestDialog();
 
     /**
-     * @brief prepareForm prepares form with various info about book
-     * @param isbn  book's ISBN
-     * @param title book's title
-     * @param authors book's authors
-     * @param quantity book's quantity in stock
-     * @param sold how many books with that ISBN have been sold
+     * @brief prepareForm prepares form with initial quantity
      */
-    void prepareForm( const QString& isbn
-                    , const QString& title
-                    , const QString& authors
-                    , const uint quantity
-                    , const uint sold );
+    void prepareForm( const uint quantity );
 
     uint quantity() const;
 private:
-    Ui::FillRequestDialog *ui;
+    Ui::FillRequestDialog * const ui;
 };

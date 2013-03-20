@@ -13,13 +13,14 @@ class QButtonGroup;
 class QItemSelectionModel;
 class QStringList;
 class QModelIndex;
+class QAction;
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
     
 public:
-    explicit MainWindow(QWidget *parent = NULL);
+    explicit MainWindow(QWidget * const parent = NULL);
     ~MainWindow();
     
 private:
@@ -28,6 +29,18 @@ private:
      * @brief m_clerkID ID number of connected clerk
      */
     uint m_clerkID;
+    /**
+     * @brief fillRequestAction Action for filling new request for book
+     */
+    QAction *m_fillRequestAction;
+    /**
+     * @brief m_modifyRequestAction Action for modifying request for book
+     */
+    QAction *m_modifyRequestAction;
+    /**
+     * @brief m_addToBundleAction Action that adds book to bundle under construction
+     */
+    QAction *m_addToBundleAction;
     /**
      * @brief m_login Login dialog form
      */
@@ -67,7 +80,7 @@ private:
     /**
      * @brief m_bunleComment Comment of bundle under construction
      */
-    QString m_bunleComment;
+    QString m_bundleComment;
     /**
      * @brief m_isBundleUnderConstruction is there any bundle under construction right now
      */
@@ -86,6 +99,10 @@ private:
      * @brief connects all signals back to filter controls
      */
     void connectFilters() const;
+    /**
+     * @brief configureActions configures actions
+     */
+    void configureActions();
 private slots:
     /**
      * @brief processLogin (re)login into system
@@ -116,9 +133,13 @@ private slots:
     void filterChanged(const int buttonId);
 
     /**
-     * @brief fillRequest Show information about selected entry and asks about how many books to request
+     * @brief fillRequest about how many books to request for selected ISBN
      */
     void fillRequest();
+    /**
+     * @brief modifyRequest allows to change previously filled request
+     */
+    void modifyRequest();
 
     /**
      * @brief disconnect_clerk Disconnect current clerk (clear all tables, etc, etc)

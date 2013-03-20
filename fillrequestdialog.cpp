@@ -1,7 +1,7 @@
 #include "fillrequestdialog.h"
 #include "ui_fillrequestdialog.h"
 
-FillRequestDialog::FillRequestDialog(QWidget *parent)
+FillRequestDialog::FillRequestDialog(QWidget * const parent)
   : QDialog(parent)
   , ui(new Ui::FillRequestDialog)
 {
@@ -13,19 +13,9 @@ FillRequestDialog::~FillRequestDialog()
     delete ui;
 }
 
-void FillRequestDialog::prepareForm( const QString &isbn
-                                   , const QString &title
-                                   , const QString &authors
-                                   , const uint quantity
-                                   , const uint sold)
+void FillRequestDialog::prepareForm( const uint quantity)
 {
-    ui->isbnLabel->setText( isbn );
-    ui->titleLabel->setText( title );
-    ui->authorsLabel->setText( authors );
-    ui->quantityLabel->setText( QString::number( quantity ));
-    ui->soldLabel->setText( QString::number( sold ));
-
-    ui->quantityBox->setValue( 1 );
+    ui->quantityBox->setValue( quantity );
 }
 
 uint FillRequestDialog::quantity() const
