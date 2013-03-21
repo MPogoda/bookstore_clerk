@@ -12,6 +12,9 @@
 #include <QItemSelectionModel>
 #include <QSqlRecord>
 #include <QSqlResult>
+#include <QStringListModel>
+#include <numeric>
+#include <algorithm>
 
 #include "logindialog.h"
 #include "fillrequestdialog.h"
@@ -65,11 +68,15 @@ MainWindow::MainWindow(QWidget * const parent)
     , m_fillRequestAction( new QAction( tr("Add Request"), this) )
     , m_modifyRequestAction( new QAction( tr("Modify Request"), this) )
     , m_addToBundleAction( new QAction( tr("Add to Bundle"), this ) )
+    , m_removeBookFromBundle( new QAction( tr("Remove from Bundle"), this))
     , m_login(new LoginDialog(this))
     , m_fillRequest( new FillRequestDialog( this ))
     , m_inputModel( new QSqlQueryModel( this ) )
     , m_inputSelectionModel( new QItemSelectionModel( m_inputModel, this ) )
     , m_filterButtons( new QButtonGroup( this ) )
+    , m_bundleBookModel( new QStringListModel( this ))
+    , m_bundleBookSelectionModel( new QItemSelectionModel( m_bundleBookModel, this ))
+    , m_isBundleUnderConstruction( false )
 {
     DebugHelper debugHelper( Q_FUNC_INFO);
 
@@ -93,6 +100,9 @@ MainWindow::MainWindow(QWidget * const parent)
     ui->tableView->setModel(m_inputModel);
     ui->tableView->setSelectionModel( m_inputSelectionModel );
 
+    ui->bundleBooksView->setModel( m_bundleBookModel );
+    ui->bundleBooksView->setSelectionModel( m_bundleBookSelectionModel );
+
     connect( m_filterButtons, SIGNAL(buttonClicked(int)), this, SLOT(filterChanged(int)));
     connectFilters();
 
@@ -110,6 +120,17 @@ MainWindow::MainWindow(QWidget * const parent)
              this, SLOT(inputViewSelectionChanged(QModelIndex,QModelIndex)) );
 
     connect( ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(currentTabChanged(int)) );
+
+    connect( m_modifyRequestAction, SIGNAL(triggered()), this, SLOT(modifyRequest()));
+
+    connect( m_addToBundleAction, SIGNAL(triggered()), this, SLOT(addToBundle()));
+
+    connect( m_bundleBookSelectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex))
+             , this, SLOT(bundledBookViewSelectionChanged(QModelIndex,QModelIndex)) );
+
+    connect( ui->saveDiscountButton, SIGNAL(clicked()), this, SLOT(discountSave()) );
+    connect( ui->resetDiscountButton, SIGNAL(clicked()), this, SLOT(discountReset()) );
+    connect( m_removeBookFromBundle, SIGNAL(triggered()), this, SLOT(removeFromBundle()));
 }
 
 namespace
@@ -139,6 +160,7 @@ void MainWindow::currentTabChanged(const int index)
         // do stuff for input pane
         ui->discountBox->hide();
         qDebug() << m_inputSelectionModel->currentIndex().row();
+        m_removeBookFromBundle->setVisible( false );
         inputViewSelectionChanged( m_inputSelectionModel->currentIndex(), m_inputModel->index( -1, -1 ));
         break;
     case 1:
@@ -148,6 +170,9 @@ void MainWindow::currentTabChanged(const int index)
             // do stuff (ask about new bundle? )
         }
         ui->discountBox->show();
+        m_addToBundleAction->setVisible( false );
+        m_modifyRequestAction->setVisible( false );
+        m_fillRequestAction->setVisible( false );
         // do stuff for bundle modification pane
         break;
     case 2:
@@ -171,6 +196,7 @@ void MainWindow::configureActions()
     setShortcut( m_fillRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
     setShortcut( m_modifyRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
     setShortcut( m_addToBundleAction, QKeySequence::Italic, tr("Ctrl+I"));
+    setShortcut( m_removeBookFromBundle, QKeySequence::Italic, tr("Ctrl+I"));
 
     m_fillRequestAction->setToolTip( tr("Fill request for selected book") );
     ui->mainToolBar->addAction( m_fillRequestAction);
@@ -186,6 +212,11 @@ void MainWindow::configureActions()
     ui->mainToolBar->addAction( m_addToBundleAction );
     ui->menuAction->addAction( m_addToBundleAction );
     m_addToBundleAction->setVisible( false );
+
+    m_removeBookFromBundle->setToolTip( tr("Remove selected book from bundle"));
+    ui->mainToolBar->addAction( m_removeBookFromBundle );
+    ui->menuAction->addAction( m_removeBookFromBundle );
+    m_removeBookFromBundle->setVisible( false );
 }
 
 MainWindow::~MainWindow()
@@ -280,33 +311,29 @@ void MainWindow::modifyRequest()
         return;
     }
 
-    const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
+    const QString isbn = ui->isbnLabel->text();
     qDebug() << "ISBN: " << isbn;
 
     DBOpener    dbopener( this );
 
-    QSqlQuery insertRequest;
+    QSqlQuery updateQuery;
     qDebug() << "Prepare: " <<
-                insertRequest.prepare( "INSERT INTO request( isbn, quantity, clerk_id ) VALUES "
-                                       "( :isbn, :quantity, :clerkID )");
+                updateQuery.prepare( "UPDATE request "
+                                     "SET quantity = :quantity "
+                                     "where isbn = :isbn");
 
-    insertRequest.bindValue( ":isbn", isbn );
-    insertRequest.bindValue( ":quantity", request );
-    insertRequest.bindValue( ":clerkID", m_clerkID );
+    updateQuery.bindValue( ":isbn", isbn );
+    updateQuery.bindValue( ":quantity", request );
 
     qDebug() << "Transaction: " <<
                 QSqlDatabase::database().transaction();
     qDebug() << "Exec: " <<
-                insertRequest.exec();
+                updateQuery.exec();
     const bool commit = QSqlDatabase::database().commit();
     qDebug() << "Commit: " << commit;
 
     if (commit)
-    {
         ui->requestedLabel->setText( QString::number( request ));
-        m_modifyRequestAction->setVisible( true );
-        m_fillRequestAction->setVisible( false );
-    }
 }
 
 void MainWindow::fillRequest()
@@ -424,7 +451,7 @@ void MainWindow::showAboutQt()
 
 namespace
 {
-void findBookInfo( const QString& isbn, QString& title, uint& quantity, float& price, uint& year, QString& publisherName)
+void findBookInfo( const QString& isbn, QString& title, uint& quantity, qreal& price, uint& year, QString& publisherName)
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
     QSqlQuery searchBook;
@@ -473,11 +500,115 @@ uint findRequestedAmmount( const QString& isbn, uint& clerkID )
     qDebug() << "ClerkID: " << clerkID << "Requested: " << requested;
     return requested;
 }
+
+qreal findSavings( const QList< qreal >& bundledPrices, const QList< qreal >& bundledDiscounts, qreal& totalWithDiscounts )
+{
+    using std::accumulate;
+
+    const qreal totalWithoutDiscounts = accumulate( bundledPrices.constBegin(), bundledPrices.constEnd(), 0.0 );
+
+    totalWithDiscounts = 0.0;
+
+    QList< qreal >::const_iterator iterPrice, iterDiscount;
+    for ( iterPrice = bundledPrices.constBegin(), iterDiscount = bundledDiscounts.constBegin()
+        ; bundledDiscounts.constEnd() != iterDiscount
+        ; ++iterDiscount, ++iterPrice )
+        totalWithDiscounts += (1.0 - *iterDiscount) * *iterPrice;
+
+    return totalWithoutDiscounts - totalWithDiscounts;
+}
+}
+
+void MainWindow::discountReset()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    const int row = m_bundleBookSelectionModel->currentIndex().row();
+
+    const qreal oldValue = 0.01 * (100 - ui->discountSpin->value()) * m_bundledPrices.at( row );
+    const qreal newValue = (1.0 - m_bundledDiscounts.at( row )) * m_bundledPrices.at( row );
+
+    const qreal delta = newValue - oldValue;
+
+    ui->discountSpin->setValue( 100 * m_bundledDiscounts.at( row ));
+    ui->discountedPriceLabel->setText( QString::number( newValue, 'f', 2));
+
+    ui->totalLabel->setText( QString::number(
+                                 ui->totalLabel->text().toDouble() + delta
+                                 , 'f', 2));
+    ui->savingsLabel->setText( QString::number(
+                                   ui->savingsLabel->text().toDouble() - delta
+                                   , 'f', 2));
+
+    ui->saveDiscountButton->setEnabled( false );
+
+}
+
+void MainWindow::discountSave()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    const int row = m_bundleBookSelectionModel->currentIndex().row();
+
+    m_bundledDiscounts[ row ] = 0.01 * ui->discountSpin->value();
+
+    ui->saveDiscountButton->setEnabled( false );
+}
+
+void MainWindow::removeFromBundle()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    discountReset();
+
+    const int row = m_bundleBookSelectionModel->currentIndex().row();
+
+    const qreal savings = m_bundledPrices.at( row ) * m_bundledDiscounts.at( row );
+
+    ui->savingsLabel->setText( QString::number(
+                                   ui->savingsLabel->text().toDouble() - savings
+                                   , 'f', 2));
+
+    ui->totalLabel->setText( QString::number(
+                                 ui->totalLabel->text().toDouble() - m_bundledPrices.at( row ) + savings
+                                 , 'f', 2
+                                 ));
+
+    m_bundledDiscounts.removeAt( row );
+    m_bundledPrices.removeAt( row );
+    m_bundledISBNs.removeAt( row );
+    m_bundleBookModel->removeRow( row );
+
+    if (m_bundledISBNs.empty())
+    {
+        m_removeBookFromBundle->setVisible( false );
+        ui->currentBookBox->hide();
+    }
 }
 
 void MainWindow::addToBundle()
 {
     DebugHelper debugHelper( Q_FUNC_INFO );
+
+    if (!m_isBundleUnderConstruction)
+    {
+        if (QMessageBox::Yes == QMessageBox::warning( this, tr("No bundle under construction")
+                              , tr("There is no bundle under construction. Want to create new?")
+                              , QMessageBox::Yes, QMessageBox::Cancel) )
+        {
+            m_bundledDiscounts.clear();
+            m_bundledISBNs.clear();
+            m_bundleBookModel->setStringList( QStringList() );
+            ui->bundleCommentEdit->clear();
+            ui->bundleNameEdit->setText( "Some Bundle Name");
+            ui->totalLabel->setText( QString::number(0.0, 'f', 2) );
+            ui->savingsLabel->setText( QString::number( 0.0, 'f', 2));
+
+            ui->tabBundleMod->setEnabled(true);
+
+            m_isBundleUnderConstruction = true;
+        }
+    }
 
     const int row = m_inputSelectionModel->currentIndex().row();
     if (-1 == row)
@@ -486,7 +617,7 @@ void MainWindow::addToBundle()
         return;
     }
 
-    const QString isbn = m_inputModel->record( row ).value( "isbn" ).toString();
+    const QString isbn = ui->isbnLabel->text();
     qDebug() << "ISBN: " << isbn;
 
     if (m_bundledISBNs.contains( isbn ))
@@ -497,15 +628,30 @@ void MainWindow::addToBundle()
         return;
     }
 
-    DBOpener    dbopener( this );
+    const QString title = ui->titleLabel->text();
+    const qreal price   = ui->priceLabel->text().toDouble();
+    const QString year     = ui->yearLabel->text();
+    const QString publisherName( ui->publisherLabel->text() );
+    const QString authors = ui->authorsLabel->text();
 
-    QString title;
-    uint quantity;
-    float price;
-    uint year;
-    QString publisherName;
+    const QString bundleItem( tr("%0 by %1; %2 (%3)")
+                              .arg( title )
+                              .arg( authors )
+                              .arg( publisherName )
+                              .arg( year )
+                            );
 
-    findBookInfo( isbn, title, quantity, price, year, publisherName );
+    m_bundledISBNs << isbn;
+    m_bundledDiscounts << 0.0;
+    m_bundledPrices << price;
+
+    m_bundleBookModel->insertRow( m_bundleBookModel->rowCount() );
+    QModelIndex index = m_bundleBookModel->index( m_bundleBookModel->rowCount() - 1);
+    m_bundleBookModel->setData( index, bundleItem );
+
+    ui->totalLabel->setText( QString::number(ui->totalLabel->text().toDouble() + price, 'f', 2));
+
+    m_addToBundleAction->setVisible( false );
 }
 
 void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -536,7 +682,7 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
 
     QString title;
     uint quantity;
-    float price;
+    qreal price;
     uint year;
     QString publisherName;
     findBookInfo( isbn, title, quantity, price, year, publisherName);
@@ -547,7 +693,7 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
     ui->isbnLabel->setText( isbn );
     ui->titleLabel->setText( title );
     ui->quantityLabel->setText( QString::number( quantity ));
-    ui->priceLabel->setText( QString::number( price, 'g', 2));
+    ui->priceLabel->setText( QString::number( price, 'f', 2));
     ui->yearLabel->setText( QString::number( year ));
     ui->publisherLabel->setText( publisherName );
     ui->soldLabel->setText( QString::number( sold ) );
@@ -570,16 +716,71 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
         m_modifyRequestAction->setVisible( clerkID == m_clerkID );
     }
 
-    if (!m_isBundleUnderConstruction)
-        return;
+//    if (!m_isBundleUnderConstruction)
+//        return;
 
     if (m_bundledISBNs.contains(isbn))
     {
+        m_addToBundleAction->setVisible( false );
         // TODO: add delete book from bundle???
         return;
     }
 
     m_addToBundleAction->setVisible( true );
+}
+
+void MainWindow::bundledBookViewSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    if (current.row() == previous.row())
+    {
+        qDebug() << "Row has not changed";
+        return;
+    }
+
+    if (-1 == current.row())
+    {
+        ui->currentBookBox->hide();
+        return;
+    }
+
+    if (-1 == previous.row())
+    {
+        ui->currentBookBox->show();
+    }
+
+    const QString& isbn = m_bundledISBNs.at( current.row() );
+    qDebug() << "Selected ISBN: " << isbn;
+
+    DBOpener dBOpener( this );
+
+    QString title;
+    uint quantity;
+    qreal price;
+    uint year;
+    QString publisherName;
+    findBookInfo( isbn, title, quantity, price, year, publisherName);
+
+    const uint sold = m_inputModel->record( current.row() ).value( "sold" ).toUInt();
+    const QStringList authors = findAuthorsForBook( isbn );
+
+    ui->isbnLabel->setText( isbn );
+    ui->titleLabel->setText( title );
+    ui->quantityLabel->setText( QString::number( quantity ));
+    ui->priceLabel->setText( QString::number( price, 'f', 2));
+    ui->yearLabel->setText( QString::number( year ));
+    ui->publisherLabel->setText( publisherName );
+    ui->soldLabel->setText( QString::number( sold ) );
+    ui->authorsLabel->setText( authors.join( ", " ) );
+
+    ui->discountSpin->setValue( m_bundledDiscounts.at( current.row() ));
+
+    ui->discountedPriceLabel->setText( QString::number(
+                                           (1.0 - m_bundledDiscounts.at( current.row() ) ) * m_bundledPrices.at( current.row() )
+                                           , 'f', 2 ) );
+
+    m_removeBookFromBundle->setVisible( true );
 }
 
 void MainWindow::processLogin()

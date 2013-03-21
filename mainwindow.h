@@ -14,6 +14,7 @@ class QItemSelectionModel;
 class QStringList;
 class QModelIndex;
 class QAction;
+class QStringListModel;
 
 class MainWindow : public QMainWindow
 {
@@ -41,6 +42,7 @@ private:
      * @brief m_addToBundleAction Action that adds book to bundle under construction
      */
     QAction *m_addToBundleAction;
+    QAction *m_removeBookFromBundle;
     /**
      * @brief m_login Login dialog form
      */
@@ -62,10 +64,6 @@ private:
      */
     QButtonGroup *m_filterButtons;
     /**
-     * @brief m_bundledBooks Information about books that are currently in bundle under construction (modification)
-     */
-    QStringList m_bundledBooks;
-    /**
      * @brief m_bundledISBNs ISBN numbers of books that are currently in bundle under construction (modification)
      */
     QStringList m_bundledISBNs;
@@ -73,14 +71,10 @@ private:
      * @brief m_bundledDiscounts discounts for books that are currently in bundle under construction (modification)
      */
     QList< qreal > m_bundledDiscounts;
-    /**
-     * @brief m_bundleName Name of bundle under construction
-     */
-    QString m_bundleName;
-    /**
-     * @brief m_bunleComment Comment of bundle under construction
-     */
-    QString m_bundleComment;
+    QList< qreal > m_bundledPrices;
+
+    QStringListModel *m_bundleBookModel;
+    QItemSelectionModel *m_bundleBookSelectionModel;
     /**
      * @brief m_isBundleUnderConstruction is there any bundle under construction right now
      */
@@ -165,6 +159,7 @@ private slots:
      * @brief add_to_bundle add selected to bundle that is currently under construction (modification)
      */
     void addToBundle();
+    void removeFromBundle();
 
     /**
      * @brief selectionChanged is executed every time selection changed in input view
@@ -173,7 +168,12 @@ private slots:
      */
     void inputViewSelectionChanged( const QModelIndex& current, const QModelIndex& previous );
 
+    void bundledBookViewSelectionChanged( const QModelIndex& current, const QModelIndex& previous );
+
     void currentTabChanged( const int index);
+
+    void discountReset();
+    void discountSave();
 signals:
     void connected();
 };
