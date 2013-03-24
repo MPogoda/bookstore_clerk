@@ -133,6 +133,7 @@ MainWindow::MainWindow(QWidget * const parent)
     connect( ui->resetDiscountButton, SIGNAL(clicked()), this, SLOT(discountReset()) );
     connect( m_removeBookFromBundle, SIGNAL(triggered()), this, SLOT(removeFromBundle()));
     connect( m_saveBundleAction, SIGNAL(triggered()), this, SLOT(saveBundle()));
+    connect( ui->discountSpin, SIGNAL(valueChanged(int)), this, SLOT(discountChanged(int)));
 }
 
 namespace
@@ -521,34 +522,76 @@ void MainWindow::saveBundle()
 
     DBOpener db(this);
 
+#define _USE_PSQL
+#ifdef _USE_PSQL
+    QSqlQuery getBundleIdQuery;
+    getBundleIdQuery.setForwardOnly( true );
+    qDebug() << "Prepare: " <<
+                getBundleIdQuery.prepare( "SELECT 1 + COUNT(*) FROM bundle" );
+    qDebug() << "Exec: " << getBundleIdQuery.exec() << getBundleIdQuery.first();
+
+    const uint bundleID = getBundleIdQuery.value( 0 ).toUInt();
+    qDebug() << "BundleID: " << bundleID;
+#endif
+
     QSqlQuery addBundleQuery;
     qDebug() << "Prepare: " <<
-                addBundleQuery.prepare( "INSERT INTO bundle (bundle_id, name, deleted, commnt) VALUES "
-                                        " ( 1+(SELECT COUNT(*) FROM bundle),"
-                                        ":name, 0, :commnt)");
+                addBundleQuery.prepare( "INSERT INTO bundle (bundle_id, name, deleted, commnt) VALUES ("
+                                    #ifdef _USE_PSQL
+                                        ":bundleID"
+                                    #else
+                                        "bundle_sequence.NEXTVAL"
+                                    #endif
+                                        ",:name, 0, :commnt)");
+#ifdef _USE_PSQL
+    addBundleQuery.bindValue( ":bundleID", bundleID);
+#endif
     addBundleQuery.bindValue( ":name", ui->bundleNameEdit->text());
     addBundleQuery.bindValue( ":commnt", ui->bundleCommentEdit->toPlainText());
+    //                                        " ( bundle_sequence.NEXTVAL, "
 
     qDebug() << "Transaction: " <<
                 QSqlDatabase::database().transaction();
     qDebug() << "Exec: "
              << addBundleQuery.exec();
 
+#ifndef _USE_PSQL
+    QSqlQuery getBundleIdQuery;
+    getBundleIdQuery.setForwardOnly( true );
+    qDebug() << "Prepare: " <<
+                getBundleIdQuery.prepare( "SELECT bundle_sequence.CURRVAL FROM dual" );
+    qDebug() << "Exec: " << getBundleIdQuery.exec() << getBundleIdQuery.first();
+
+    const uint bundleID = getBundleIdQuery.value( 0 ).toUInt();
+#endif
+
     QSqlQuery addBookToBundleQuery;
     qDebug() << "Prepare: " <<
                 addBookToBundleQuery.prepare( "INSERT INTO bundledbook (isbn, bundle_id, discount, deleted) VALUES "
                                               "( :isbn, :bundle_id, :discount, 0 )");
+    addBookToBundleQuery.bindValue( ":bundle_id", bundleID );
 
-    qDebug() << "LAST INSERT ID: " << addBundleQuery.lastInsertId().toString();
-    return;
+    for (int i( 0 ); m_bundledISBNs.size() != i; ++i) {
+        addBookToBundleQuery.bindValue( ":isbn", m_bundledISBNs.at( i ));
+        addBookToBundleQuery.bindValue( ":discount", m_bundledDiscounts.at( i ));
 
-    for (std::size_t i( 0 ); m_bundledISBNs.size() != i; ++i) {
-
+        qDebug() << "Exec: " << addBookToBundleQuery.exec();
     }
 
 
     const bool commit = QSqlDatabase::database().commit();
     qDebug() << "Commit: " << commit;
+    if (!commit) {
+        //show error?
+        return;
+    }
+
+    m_bundledISBNs.clear();
+    m_bundledDiscounts.clear();
+    m_bundledPrices.clear();
+    m_bundleBookModel->setStringList( QStringList() );
+    m_isBundleUnderConstruction = false;
+
 }
 
 void MainWindow::discountReset()
@@ -557,20 +600,10 @@ void MainWindow::discountReset()
 
     const int row = m_bundleBookSelectionModel->currentIndex().row();
 
-    const qreal oldValue = 0.01 * (100 - ui->discountSpin->value()) * m_bundledPrices.at( row );
     const qreal newValue = (1.0 - m_bundledDiscounts.at( row )) * m_bundledPrices.at( row );
 
-    const qreal delta = newValue - oldValue;
-
-    ui->discountSpin->setValue( 100 * m_bundledDiscounts.at( row ));
+    ui->discountSpin->setValue( static_cast< uint >(100 * m_bundledDiscounts.at( row )));
     ui->discountedPriceLabel->setText( QString::number( newValue, 'f', 2));
-
-    ui->totalLabel->setText( QString::number(
-                                 ui->totalLabel->text().toDouble() + delta
-                                 , 'f', 2));
-    ui->savingsLabel->setText( QString::number(
-                                   ui->savingsLabel->text().toDouble() - delta
-                                   , 'f', 2));
 
     ui->saveDiscountButton->setEnabled( false );
 
@@ -582,9 +615,37 @@ void MainWindow::discountSave()
 
     const int row = m_bundleBookSelectionModel->currentIndex().row();
 
-    m_bundledDiscounts[ row ] = 0.01 * ui->discountSpin->value();
+    const qreal oldValue = (1.0 - m_bundledDiscounts.at( row )) * m_bundledPrices.at( row );
+    const qreal newValue = 0.01 * static_cast< qreal >(100 - ui->discountSpin->value()) * m_bundledPrices.at( row );
+    const qreal delta = newValue - oldValue;
+
+    ui->totalLabel->setText( QString::number(
+                                 ui->totalLabel->text().toDouble() + delta
+                                 , 'f', 2
+                                 ));
+
+    ui->savingsLabel->setText( QString::number(
+                                   ui->savingsLabel->text().toDouble() - delta
+                                   , 'f', 2
+                                   ));
+
+    m_bundledDiscounts[ row ] = 0.01 * static_cast< qreal>( ui->discountSpin->value() );
 
     ui->saveDiscountButton->setEnabled( false );
+}
+
+void MainWindow::discountChanged(const int value)
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+    const int row = m_bundleBookSelectionModel->currentIndex().row();
+
+    const qreal discount = 0.01 * static_cast< qreal >( value );
+
+    const qreal price = ( 1.0 - discount ) * m_bundledPrices.at( row );
+
+    ui->discountedPriceLabel->setText( QString::number( price, 'f', 2));
+
+    ui->saveDiscountButton->setEnabled( true );
 }
 
 void MainWindow::removeFromBundle()

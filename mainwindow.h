@@ -176,6 +176,8 @@ private slots:
 
     void discountReset();
     void discountSave();
+
+    void discountChanged(const int value);
 signals:
     void connected();
 };
