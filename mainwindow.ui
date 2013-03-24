@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>887</width>
-    <height>609</height>
+    <width>885</width>
+    <height>607</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -511,7 +511,7 @@
             </property>
             <layout class="QHBoxLayout" name="horizontalLayout_5">
              <item>
-              <widget class="QTextEdit" name="bundleCommentEdit"/>
+              <widget class="QPlainTextEdit" name="bundleCommentEdit"/>
              </item>
             </layout>
            </widget>
@@ -1009,7 +1009,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>887</width>
+     <width>885</width>
      <height>25</height>
     </rect>
    </property>

@@ -43,6 +43,7 @@ private:
      */
     QAction *m_addToBundleAction;
     QAction *m_removeBookFromBundle;
+    QAction *m_saveBundleAction;
     /**
      * @brief m_login Login dialog form
      */
@@ -160,6 +161,7 @@ private slots:
      */
     void addToBundle();
     void removeFromBundle();
+    void saveBundle();
 
     /**
      * @brief selectionChanged is executed every time selection changed in input view

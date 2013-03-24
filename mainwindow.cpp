@@ -69,6 +69,7 @@ MainWindow::MainWindow(QWidget * const parent)
     , m_modifyRequestAction( new QAction( tr("Modify Request"), this) )
     , m_addToBundleAction( new QAction( tr("Add to Bundle"), this ) )
     , m_removeBookFromBundle( new QAction( tr("Remove from Bundle"), this))
+    , m_saveBundleAction( new QAction( tr("Save Bundle"), this))
     , m_login(new LoginDialog(this))
     , m_fillRequest( new FillRequestDialog( this ))
     , m_inputModel( new QSqlQueryModel( this ) )
@@ -131,6 +132,7 @@ MainWindow::MainWindow(QWidget * const parent)
     connect( ui->saveDiscountButton, SIGNAL(clicked()), this, SLOT(discountSave()) );
     connect( ui->resetDiscountButton, SIGNAL(clicked()), this, SLOT(discountReset()) );
     connect( m_removeBookFromBundle, SIGNAL(triggered()), this, SLOT(removeFromBundle()));
+    connect( m_saveBundleAction, SIGNAL(triggered()), this, SLOT(saveBundle()));
 }
 
 namespace
@@ -197,6 +199,7 @@ void MainWindow::configureActions()
     setShortcut( m_modifyRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
     setShortcut( m_addToBundleAction, QKeySequence::Italic, tr("Ctrl+I"));
     setShortcut( m_removeBookFromBundle, QKeySequence::Italic, tr("Ctrl+I"));
+    setShortcut( m_saveBundleAction, QKeySequence::Save, tr("Ctrl+S"));
 
     m_fillRequestAction->setToolTip( tr("Fill request for selected book") );
     ui->mainToolBar->addAction( m_fillRequestAction);
@@ -217,6 +220,11 @@ void MainWindow::configureActions()
     ui->mainToolBar->addAction( m_removeBookFromBundle );
     ui->menuAction->addAction( m_removeBookFromBundle );
     m_removeBookFromBundle->setVisible( false );
+
+    m_saveBundleAction->setToolTip( tr("Save bundle"));
+    ui->mainToolBar->addAction( m_saveBundleAction );
+    ui->menuAction->addAction( m_saveBundleAction );
+    m_saveBundleAction->setVisible( false );
 }
 
 MainWindow::~MainWindow()
@@ -500,23 +508,47 @@ uint findRequestedAmmount( const QString& isbn, uint& clerkID )
     qDebug() << "ClerkID: " << clerkID << "Requested: " << requested;
     return requested;
 }
-
-qreal findSavings( const QList< qreal >& bundledPrices, const QList< qreal >& bundledDiscounts, qreal& totalWithDiscounts )
-{
-    using std::accumulate;
-
-    const qreal totalWithoutDiscounts = accumulate( bundledPrices.constBegin(), bundledPrices.constEnd(), 0.0 );
-
-    totalWithDiscounts = 0.0;
-
-    QList< qreal >::const_iterator iterPrice, iterDiscount;
-    for ( iterPrice = bundledPrices.constBegin(), iterDiscount = bundledDiscounts.constBegin()
-        ; bundledDiscounts.constEnd() != iterDiscount
-        ; ++iterDiscount, ++iterPrice )
-        totalWithDiscounts += (1.0 - *iterDiscount) * *iterPrice;
-
-    return totalWithoutDiscounts - totalWithDiscounts;
 }
+
+void MainWindow::saveBundle()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO );
+
+    if (!m_isBundleUnderConstruction || m_bundledISBNs.empty() || ui->bundleNameEdit->text().isNull()) {
+        // can't do shit
+        return;
+    }
+
+    DBOpener db(this);
+
+    QSqlQuery addBundleQuery;
+    qDebug() << "Prepare: " <<
+                addBundleQuery.prepare( "INSERT INTO bundle (bundle_id, name, deleted, commnt) VALUES "
+                                        " ( 1+(SELECT COUNT(*) FROM bundle),"
+                                        ":name, 0, :commnt)");
+    addBundleQuery.bindValue( ":name", ui->bundleNameEdit->text());
+    addBundleQuery.bindValue( ":commnt", ui->bundleCommentEdit->toPlainText());
+
+    qDebug() << "Transaction: " <<
+                QSqlDatabase::database().transaction();
+    qDebug() << "Exec: "
+             << addBundleQuery.exec();
+
+    QSqlQuery addBookToBundleQuery;
+    qDebug() << "Prepare: " <<
+                addBookToBundleQuery.prepare( "INSERT INTO bundledbook (isbn, bundle_id, discount, deleted) VALUES "
+                                              "( :isbn, :bundle_id, :discount, 0 )");
+
+    qDebug() << "LAST INSERT ID: " << addBundleQuery.lastInsertId().toString();
+    return;
+
+    for (std::size_t i( 0 ); m_bundledISBNs.size() != i; ++i) {
+
+    }
+
+
+    const bool commit = QSqlDatabase::database().commit();
+    qDebug() << "Commit: " << commit;
 }
 
 void MainWindow::discountReset()
@@ -607,6 +639,7 @@ void MainWindow::addToBundle()
             ui->tabBundleMod->setEnabled(true);
 
             m_isBundleUnderConstruction = true;
+            m_saveBundleAction->setVisible( true );
         }
     }
 
