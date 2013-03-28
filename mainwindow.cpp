@@ -67,6 +67,7 @@ MainWindow::MainWindow(QWidget * const parent)
     , m_clerkID( 0 )
     , m_fillRequestAction( new QAction( tr("Add Request"), this) )
     , m_modifyRequestAction( new QAction( tr("Modify Request"), this) )
+    , m_removeRequestAction( new QAction( tr("Remove Request"), this) )
     , m_addToBundleAction( new QAction( tr("Add to Bundle"), this ) )
     , m_removeBookFromBundle( new QAction( tr("Remove from Bundle"), this))
     , m_saveBundleAction( new QAction( tr("Save Bundle"), this))
@@ -123,6 +124,7 @@ MainWindow::MainWindow(QWidget * const parent)
     connect( ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(currentTabChanged(int)) );
 
     connect( m_modifyRequestAction, SIGNAL(triggered()), this, SLOT(modifyRequest()));
+    connect( m_removeRequestAction, SIGNAL(triggered()), this, SLOT(removeRequest()));
 
     connect( m_addToBundleAction, SIGNAL(triggered()), this, SLOT(addToBundle()));
 
@@ -175,6 +177,7 @@ void MainWindow::currentTabChanged(const int index)
         ui->discountBox->show();
         m_addToBundleAction->setVisible( false );
         m_modifyRequestAction->setVisible( false );
+        m_modifyRequestAction->setVisible( false );
         m_fillRequestAction->setVisible( false );
         // do stuff for bundle modification pane
         break;
@@ -198,6 +201,7 @@ void MainWindow::configureActions()
     setShortcut( ui->actionAbout_Qt, QKeySequence::WhatsThis, tr("Shift+F1"));
     setShortcut( m_fillRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
     setShortcut( m_modifyRequestAction, QKeySequence::Bold, tr("Ctrl+B") );
+    setShortcut( m_removeRequestAction, QKeySequence::Underline, tr("Ctrl+U") );
     setShortcut( m_addToBundleAction, QKeySequence::Italic, tr("Ctrl+I"));
     setShortcut( m_removeBookFromBundle, QKeySequence::Italic, tr("Ctrl+I"));
     setShortcut( m_saveBundleAction, QKeySequence::Save, tr("Ctrl+S"));
@@ -211,6 +215,11 @@ void MainWindow::configureActions()
     ui->mainToolBar->addAction( m_modifyRequestAction );
     ui->menuAction->addAction( m_modifyRequestAction );
     m_modifyRequestAction->setVisible( false );
+
+    m_removeRequestAction->setToolTip( tr("Remove your previous request" ));
+    ui->mainToolBar->addAction( m_removeRequestAction );
+    ui->menuAction->addAction( m_removeRequestAction );
+    m_removeRequestAction->setVisible( false );
 
     m_addToBundleAction->setToolTip( tr("Add selected book to bundle"));
     ui->mainToolBar->addAction( m_addToBundleAction );
@@ -336,13 +345,70 @@ void MainWindow::modifyRequest()
 
     qDebug() << "Transaction: " <<
                 QSqlDatabase::database().transaction();
-    qDebug() << "Exec: " <<
-                updateQuery.exec();
+    const bool queryResult = updateQuery.exec();
+    qDebug() << "Exec: " << queryResult;
+    if (!queryResult) {
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
+        return;
+    }
     const bool commit = QSqlDatabase::database().commit();
     qDebug() << "Commit: " << commit;
 
     if (commit)
         ui->requestedLabel->setText( QString::number( request ));
+    else
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
+
+}
+
+void MainWindow::removeRequest()
+{
+    DebugHelper debugHelper( Q_FUNC_INFO);
+
+    const int row = m_inputSelectionModel->currentIndex().row();
+    if (-1 == row)
+    {
+        qDebug() << "No row is selected";
+        return;
+    }
+
+    const QString isbn = ui->isbnLabel->text();
+    qDebug() << "ISBN: " << isbn;
+
+    DBOpener    dbopener( this );
+
+    QSqlQuery removeQuery;
+    qDebug() << "Prepare: " <<
+                removeQuery.prepare( "DELETE "
+                                     "FROM request "
+                                     "where isbn = :isbn");
+
+    removeQuery.bindValue( ":isbn", isbn );
+
+    qDebug() << "Transaction: " <<
+                QSqlDatabase::database().transaction();
+    const bool queryResult = removeQuery.exec();
+    qDebug() << "Exec: " << queryResult;
+    if (!queryResult) {
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
+        return;
+    }
+    const bool commit = QSqlDatabase::database().commit();
+    qDebug() << "Commit: " << commit;
+
+    if (commit) {
+        ui->requestedLabel->setText( "None" );
+        m_modifyRequestAction->setVisible( false );
+        m_removeRequestAction->setVisible( false );
+        m_fillRequestAction->setVisible( true );
+    }
+    else
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
+
 }
 
 void MainWindow::fillRequest()
@@ -382,8 +448,13 @@ void MainWindow::fillRequest()
 
     qDebug() << "Transaction: " <<
                 QSqlDatabase::database().transaction();
-    qDebug() << "Exec: " <<
-                insertRequest.exec();
+    const bool insertResult = insertRequest.exec();
+    qDebug() << "Exec: " << insertResult;
+    if (!insertResult) {
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
+        return;
+    }
     const bool commit = QSqlDatabase::database().commit();
     qDebug() << "Commit: " << commit;
 
@@ -392,6 +463,10 @@ void MainWindow::fillRequest()
         ui->requestedLabel->setText( QString::number( request ));
         m_modifyRequestAction->setVisible( true );
         m_fillRequestAction->setVisible( false );
+    }
+    else  {
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
     }
 }
 
@@ -548,12 +623,16 @@ void MainWindow::saveBundle()
 #endif
     addBundleQuery.bindValue( ":name", ui->bundleNameEdit->text());
     addBundleQuery.bindValue( ":commnt", ui->bundleCommentEdit->toPlainText());
-    //                                        " ( bundle_sequence.NEXTVAL, "
 
     qDebug() << "Transaction: " <<
                 QSqlDatabase::database().transaction();
-    qDebug() << "Exec: "
-             << addBundleQuery.exec();
+    const bool addBundleResult = addBundleQuery.exec();
+    qDebug() << "Exec: " << addBundleResult;
+    if (!addBundleResult) {
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
+        return;
+    }
 
 #ifndef _USE_PSQL
     QSqlQuery getBundleIdQuery;
@@ -575,14 +654,21 @@ void MainWindow::saveBundle()
         addBookToBundleQuery.bindValue( ":isbn", m_bundledISBNs.at( i ));
         addBookToBundleQuery.bindValue( ":discount", m_bundledDiscounts.at( i ));
 
-        qDebug() << "Exec: " << addBookToBundleQuery.exec();
+        const bool addBookResult = addBookToBundleQuery.exec();
+        qDebug() << "Exec: " << addBookResult;
+        if (!addBookResult) {
+            qDebug() << "Rollback" <<
+                      QSqlDatabase::database().rollback();
+            return;
+        }
     }
 
 
     const bool commit = QSqlDatabase::database().commit();
     qDebug() << "Commit: " << commit;
     if (!commit) {
-        //show error?
+        qDebug() << "Rollback" <<
+                  QSqlDatabase::database().rollback();
         return;
     }
 
@@ -800,6 +886,7 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
         ui->requestedLabel->setText( tr("None"));
         m_fillRequestAction->setVisible( true );
         m_modifyRequestAction->setVisible( false );
+        m_removeRequestAction->setVisible( false );
 
     }
     else
@@ -808,6 +895,7 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
         m_fillRequestAction->setVisible( false );
         // Enable modifying of request if this clerk has filled it previously
         m_modifyRequestAction->setVisible( clerkID == m_clerkID );
+        m_removeRequestAction->setVisible( clerkID == m_clerkID );
     }
 
 //    if (!m_isBundleUnderConstruction)
@@ -934,7 +1022,7 @@ void MainWindow::redrawView()
                                       "FROM book b LEFT JOIN history_of_purchasing h ON h.isbn = b.isbn "
                                       "WHERE (quantity BETWEEN :fromStock AND :toStock) "
                                       // TODO: uncomment on ORCL
-                                    //  " AND (purchasing_date ISNULL OR purchasing_date >= trunc(sysdate - 7)) "
+                                      " AND (purchasing_date ISNULL OR purchasing_date >= trunc(sysdate - 7)) "
                                       "GROUP BY b.isbn "
                                       "HAVING count(*) BETWEEN :fromBought AND :toBought");
     simpleSearch.bindValue(":fromBought",
@@ -963,6 +1051,7 @@ void MainWindow::redrawView()
     statusBar()->showMessage(tr("%1 row(s) were found.").arg(simpleSearch.size()));
 
     m_inputModel->setQuery(simpleSearch);
+    ui->tableView->resizeColumnsToContents();
 }
 
 void MainWindow::connectFilters() const

@@ -39,6 +39,10 @@ private:
      */
     QAction *m_modifyRequestAction;
     /**
+     * @brief  Action for removing request for book
+     */
+    QAction *m_removeRequestAction;
+    /**
      * @brief m_addToBundleAction Action that adds book to bundle under construction
      */
     QAction *m_addToBundleAction;
@@ -135,6 +139,10 @@ private slots:
      * @brief modifyRequest allows to change previously filled request
      */
     void modifyRequest();
+    /**
+     * @brief allows to remove previously filled request
+     */
+    void removeRequest();
 
     /**
      * @brief disconnect_clerk Disconnect current clerk (clear all tables, etc, etc)
