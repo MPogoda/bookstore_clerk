@@ -80,14 +80,11 @@ MainWindow::MainWindow(QWidget * const parent)
     , m_bundleBookSelectionModel( new QItemSelectionModel( m_bundleBookModel, this ))
     , m_isBundleUnderConstruction( false )
 {
-    DebugHelper debugHelper( Q_FUNC_INFO);
-
     ui->setupUi(this);
     ui->filterGroupBox->hide();
     ui->discountBox->hide();
 
     configureActions();
-
 
     m_filterButtons->addButton( ui->trendingRadioButton, 0);
     m_filterButtons->addButton( ui->overstockedRadioButton, 1 );
@@ -142,8 +139,6 @@ namespace
 {
 void setShortcut( QAction *const action, const QKeySequence& sequence, const QKeySequence fallback = QKeySequence::UnknownKey)
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     if (sequence.isEmpty())
     {
         qDebug() << "Given sequence is empty. Using fallback";
@@ -192,8 +187,6 @@ void MainWindow::currentTabChanged(const int index)
 
 void MainWindow::configureActions()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     setShortcut( ui->actionQuit, QKeySequence::Quit, tr("Ctrl+Q") );
     setShortcut( ui->actionDisconnect, QKeySequence::Close, tr("Ctrl+W") );
     setShortcut( ui->actionReconnect, QKeySequence::New, tr("Ctrl+N") );
@@ -239,13 +232,11 @@ void MainWindow::configureActions()
 
 MainWindow::~MainWindow()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO);
     delete ui;
 }
 
 void MainWindow::setupConnection() const
 {
-    DebugHelper debugHelper( Q_FUNC_INFO);
     QSettings settings( "settings.ini", QSettings::IniFormat );
 
     settings.beginGroup( "database" );
@@ -254,6 +245,7 @@ void MainWindow::setupConnection() const
     const QString dbName( settings.value( "database", "bookstore" ).toString() );
     const QString userName( settings.value( "user",     QString()   ).toString() );
     const QString password( settings.value( "password", QString()   ).toString() );
+    const uint port( settings.value( "port", "1521").toUInt());
     settings.endGroup();
 
     qDebug() << "driver: " << dbDriver;
@@ -261,12 +253,14 @@ void MainWindow::setupConnection() const
     qDebug() << "database: " << dbName;
     qDebug() << "username: " << userName;
     qDebug() << "password: " << password;
+    qDebug() << "port: " << port;
 
     QSqlDatabase db = QSqlDatabase::addDatabase( dbDriver );
     db.setHostName(     hostName );
     db.setDatabaseName( dbName );
     db.setUserName(     userName );
     db.setPassword(     password );
+    db.setPort( port );
 }
 
 namespace
@@ -472,23 +466,17 @@ void MainWindow::fillRequest()
 
 void MainWindow::disconnectClerk()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     m_inputModel->clear();
-//    ui->tabWidget->setEnabled( false );
     ui->tabWidget->hide();
     ui->mainToolBar->hide();
-//    ui->mainToolBar->setEnabled( false );
     ui->filterGroupBox->hide();
     ui->currentBookBox->hide();
-//    ui->filterToggleButton->setEnabled( false );
     ui->filterToggleButton->hide();
     ui->boughtLessThanBox->setChecked( false );
     ui->boughtMoreThanBox->setChecked( false );
     ui->boughtLessThanBox->setChecked( false );
     ui->boughtMoreThanBox->setChecked( false );
 
-//    ui->actionDisconnect->setEnabled( false );
     ui->actionDisconnect->setVisible( false );
 
     m_clerkID = 0;
@@ -496,8 +484,6 @@ void MainWindow::disconnectClerk()
 
 void MainWindow::connectClerk()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     if (0 == m_clerkID)
     {
         qDebug() << "Not connected.";
@@ -679,13 +665,12 @@ void MainWindow::saveBundle()
     m_bundledPrices.clear();
     m_bundleBookModel->setStringList( QStringList() );
     m_isBundleUnderConstruction = false;
+    m_saveBundleAction->setVisible( false );
 
 }
 
 void MainWindow::discountReset()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     const int row = m_bundleBookSelectionModel->currentIndex().row();
 
     const qreal newValue = (1.0 - m_bundledDiscounts.at( row )) * m_bundledPrices.at( row );
@@ -699,8 +684,6 @@ void MainWindow::discountReset()
 
 void MainWindow::discountSave()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     const int row = m_bundleBookSelectionModel->currentIndex().row();
 
     const qreal oldValue = (1.0 - m_bundledDiscounts.at( row )) * m_bundledPrices.at( row );
@@ -724,7 +707,6 @@ void MainWindow::discountSave()
 
 void MainWindow::discountChanged(const int value)
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
     const int row = m_bundleBookSelectionModel->currentIndex().row();
 
     const qreal discount = 0.01 * static_cast< qreal >( value );
@@ -738,8 +720,6 @@ void MainWindow::discountChanged(const int value)
 
 void MainWindow::removeFromBundle()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     discountReset();
 
     const int row = m_bundleBookSelectionModel->currentIndex().row();
@@ -900,13 +880,9 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
         m_removeRequestAction->setVisible( clerkID == m_clerkID );
     }
 
-//    if (!m_isBundleUnderConstruction)
-//        return;
-
     if (m_bundledISBNs.contains(isbn))
     {
         m_addToBundleAction->setVisible( false );
-        // TODO: add delete book from bundle???
         return;
     }
 
@@ -915,8 +891,6 @@ void MainWindow::inputViewSelectionChanged(const QModelIndex &current, const QMo
 
 void MainWindow::bundledBookViewSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
 {
-    DebugHelper debugHelper( Q_FUNC_INFO );
-
     if (current.row() == previous.row())
     {
         qDebug() << "Row has not changed";
@@ -969,8 +943,6 @@ void MainWindow::bundledBookViewSelectionChanged(const QModelIndex &current, con
 
 void MainWindow::processLogin()
 {
-    DebugHelper debugHelper( Q_FUNC_INFO);
-
     disconnectClerk();
 
     m_login->clear();
@@ -1020,11 +992,10 @@ void MainWindow::redrawView()
 
     QSqlQuery simpleSearch;
     qDebug() << "Prepare: " <<
-                simpleSearch.prepare( "SELECT b.isbn AS isbn, COUNT(purchasing_date) AS sold, quantity "
+                simpleSearch.prepare( "SELECT b.isbn, COUNT(purchasing_date) sold, MAX(quantity) "
                                       "FROM book b LEFT JOIN history_of_purchasing h ON h.isbn = b.isbn "
                                       "WHERE (quantity BETWEEN :fromStock AND :toStock) "
-                                      // TODO: uncomment on ORCL
-                                      //" AND (purchasing_date ISNULL OR purchasing_date >= trunc(sysdate - 7)) "
+                                      "AND (purchasing_date IS NULL OR purchasing_date >= trunc(sysdate - 7)) "
                                       "GROUP BY b.isbn "
                                       "HAVING count(*) BETWEEN :fromBought AND :toBought");
     simpleSearch.bindValue(":fromBought",
@@ -1050,8 +1021,12 @@ void MainWindow::redrawView()
 
     qDebug() << "Exec: " << simpleSearch.exec();
 
+    qDebug() << simpleSearch.lastError();
 
     m_inputModel->setQuery(simpleSearch);
+    m_inputModel->setHeaderData( 0, Qt::Horizontal, tr("ISBN") );
+    m_inputModel->setHeaderData( 1, Qt::Horizontal, tr("Sold"));
+    m_inputModel->setHeaderData( 2, Qt::Horizontal, tr("Quantity"));
     statusBar()->showMessage(tr("%1 row(s) were found.").arg(m_inputModel->rowCount()));
     ui->tableView->resizeColumnsToContents();
 }
