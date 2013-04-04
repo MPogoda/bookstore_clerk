@@ -547,7 +547,8 @@ void findBookInfo( const QString& isbn, QString& title, uint& quantity, qreal& p
 
     searchBook.bindValue( ":isbn", isbn );
 
-    qDebug() << "Exec: " << searchBook.exec() << searchBook.first();
+    qDebug() << "Exec: " << searchBook.exec();
+    qDebug() << "First: "<< searchBook.first();
 
     title = searchBook.value( 0 ).toString();
     price = searchBook.value( 1 ).toFloat();
@@ -577,7 +578,7 @@ uint findRequestedAmmount( const QString& isbn, uint& clerkID )
         return 0;
     }
 
-    qDebug() << "Selecting first record: " << findRequest.first();
+    qDebug() << "First: " << findRequest.first();
     clerkID = findRequest.value( 1 ).toUInt();
     const uint requested = findRequest.value( 0 ).toUInt();
 
@@ -603,7 +604,8 @@ void MainWindow::saveBundle()
     getBundleIdQuery.setForwardOnly( true );
     qDebug() << "Prepare: " <<
                 getBundleIdQuery.prepare( "SELECT 1 + COUNT(*) FROM bundle" );
-    qDebug() << "Exec: " << getBundleIdQuery.exec() << getBundleIdQuery.first();
+    qDebug() << "Exec: " << getBundleIdQuery.exec();
+    qDebug() << "First: "<< getBundleIdQuery.first();
 
     const uint bundleID = getBundleIdQuery.value( 0 ).toUInt();
     qDebug() << "BundleID: " << bundleID;
@@ -989,8 +991,8 @@ void MainWindow::processLogin()
         searchPasswordHash.bindValue( ":clerkID", m_login->userName() );
         searchPasswordHash.bindValue( ":passwordHash", m_login->passwordHash() );
 
-        qDebug() << "Exec: " << searchPasswordHash.exec()
-                 << searchPasswordHash.first();
+        qDebug() << "Exec: " << searchPasswordHash.exec();
+        qDebug() << "First: "<< searchPasswordHash.first();
 
         if (1 == searchPasswordHash.value( 0 ).toUInt())
         {
@@ -1022,7 +1024,7 @@ void MainWindow::redrawView()
                                       "FROM book b LEFT JOIN history_of_purchasing h ON h.isbn = b.isbn "
                                       "WHERE (quantity BETWEEN :fromStock AND :toStock) "
                                       // TODO: uncomment on ORCL
-                                      " AND (purchasing_date ISNULL OR purchasing_date >= trunc(sysdate - 7)) "
+                                      //" AND (purchasing_date ISNULL OR purchasing_date >= trunc(sysdate - 7)) "
                                       "GROUP BY b.isbn "
                                       "HAVING count(*) BETWEEN :fromBought AND :toBought");
     simpleSearch.bindValue(":fromBought",
@@ -1048,9 +1050,9 @@ void MainWindow::redrawView()
 
     qDebug() << "Exec: " << simpleSearch.exec();
 
-    statusBar()->showMessage(tr("%1 row(s) were found.").arg(simpleSearch.size()));
 
     m_inputModel->setQuery(simpleSearch);
+    statusBar()->showMessage(tr("%1 row(s) were found.").arg(m_inputModel->rowCount()));
     ui->tableView->resizeColumnsToContents();
 }
 
